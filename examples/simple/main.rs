@@ -1,87 +1,123 @@
 use eframe::{CreationContext, Frame, NativeOptions};
-use egui::{Context, Response};
-use egui_mvvm::state_stream::{
-    ChangeDetector, StateStream, StateStreamChangeDetector, StateStreamHandle,
-};
+use egui::{Context, Response, Slider};
+use egui_mvvm::ChangeDetector;
+use egui_mvvm::state::{State, StateChangeDetector, StateHandle};
 use egui_mvvm::task_pool::TaskPool;
-use egui_mvvm::view_model::ViewModel;
-use std::time::Duration;
-use rand::{random, random_range};
+use egui_mvvm::view_model::{
+    EguiViewModelExt, EguiViewModelsExt, ViewModel, ViewModelErased, ViewModelWrite,
+    request_repaint_on_change,
+};
+use std::pin::Pin;
+use std::time::{Duration, Instant};
 
 #[tokio::main]
 async fn main() {
-        let view_model = CommentViewModel::new();
-        let change_detector = view_model.change_detector();
-
-        eframe::run_native(
-            "egui-mvvm",
-            NativeOptions::default(),
-            Box::new(move |creation: &CreationContext| {
-                Ok(EguiApp::new(
-                    &creation.egui_ctx,
-                    change_detector,
-                    view_model,
-                ))
-            }),
-        )
-        .unwrap()
+    eframe::run_native(
+        "egui-mvvm",
+        NativeOptions::default(),
+        Box::new(move |creation: &CreationContext| Ok(EguiApp::new(&creation.egui_ctx))),
+    )
+    .unwrap()
 }
 
-struct EguiApp {
-    view_model: CommentViewModel,
-}
+struct EguiApp {}
 
 impl EguiApp {
-    pub fn new(
-        ctx: &egui::Context,
-        mut change_detector: impl ChangeDetector,
-        view_model: CommentViewModel,
-    ) -> Box<Self> {
-        // Send Repaint Requests when the ViewModel changes.
-        {
-            let ctx = ctx.clone();
-            tokio::spawn(async move {
-                loop {
-                    change_detector.wait_for_change().await;
-                    ctx.request_repaint();
-                }
-            });
-        }
+    pub fn new(ctx: &Context) -> Box<Self> {
+        tokio::spawn(request_repaint_on_change(ctx.clone()));
 
-        Box::new(Self { view_model })
+        Box::new(Self {})
     }
 }
 
 impl eframe::App for EguiApp {
-    fn update(&mut self, ctx: &Context, frame: &mut Frame) {
+    fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
+        ctx.memory_mut(|mem| mem.view_models().latch_values());
+
         egui::CentralPanel::default().show(ctx, |ui| {
-            self.view_model.latch_state();
+            ctx.memory_ui(ui);
 
             ui.label(format!("{:?}", std::time::Instant::now()));
-            CommentView {
-                view_model: &mut self.view_model,
+
+            let view_model = ui.fetch_model::<DemoViewModel>();
+            DemoView {
+                view_model: view_model.get_mut(),
             }
             .show(ui)
         });
     }
 }
 
-struct CommentView<'a> {
-    view_model: &'a mut CommentViewModel,
+struct DemoView<'a> {
+    view_model: ViewModelWrite<'a, DemoViewModel>,
 }
 
-impl CommentView<'_> {
+impl DemoView<'_> {
     pub fn show(&mut self, ui: &mut egui::Ui) -> Response {
-        ui.horizontal(|ui| {
-            ui.text_edit_singleline(&mut self.view_model.post_content);
-            if ui.button("Submit").clicked() {
-                self.view_model.send_comment();
+        ui.vertical(|ui| {
+            if let Some(error) = self.view_model.error.value() {
+                match error {
+                    Error::MissingDuration => ui.label("Duration cannot be zero!"),
+                };
             }
 
-            if let Some(post_status) = &*self.view_model.post_status.value() {
+            ui.horizontal(|ui| {
+                if ui
+                    .text_edit_singleline(&mut *self.view_model.text.value_mut_untracked())
+                    .changed()
+                {
+                    self.view_model.text.mark_changed();
+                };
+
+                if ui.button("Submit").clicked()
+                    || ui.input(|input| input.key_pressed(egui::Key::Enter))
+                {
+                    self.view_model.simulate_upload();
+                }
+            });
+
+            ui.horizontal(|ui| {
+                ui.label("Jitter: ");
+
+                if ui
+                    .add(Slider::new(
+                        &mut *self.view_model.jitter.value_mut_untracked(),
+                        1.0..=10.0,
+                    ))
+                    .changed()
+                {
+                    self.view_model.jitter.mark_changed()
+                }
+            });
+
+            ui.horizontal(|ui| {
+                ui.label("Duration: ");
+
+                if ui
+                    .add(Slider::new(
+                        &mut *self.view_model.duration.value_mut_untracked(),
+                        0.0..=10.0,
+                    ))
+                    .changed()
+                {
+                    self.view_model.jitter.mark_changed()
+                }
+            });
+
+            if let Some(status) = self.view_model.status.value().as_ref() {
                 ui.vertical(|ui| {
                     ui.heading("Result:");
-                    ui.label(format!("{:?}", post_status));
+                    match status {
+                        Status::Preparing => {
+                            ui.label("Preparing upload");
+                        }
+                        Status::Uploading(progress) => {
+                            ui.label(format!("Uploading... ({}%)", (progress * 100.).round()));
+                        }
+                        Status::Success => {
+                            ui.label("Success");
+                        }
+                    }
                 });
             }
         })
@@ -89,91 +125,154 @@ impl CommentView<'_> {
     }
 }
 
-#[derive(Debug)]
-enum PostStatus {
+#[derive(Debug, Clone)]
+pub enum Status {
+    Preparing,
     Uploading(f32),
     Success,
 }
 
-struct CommentViewModel {
-    task_poll: TaskPool,
-    post_status: StateStream<Option<PostStatus>>,
-    pub post_content: String,
+#[derive(Debug, Clone)]
+pub enum Error {
+    MissingDuration,
 }
 
-//#[derive(ViewModel)]
-//struct CommentViewModel {
-//    post_status: StateStream<Option<PostStatus>> = None,
-//    post_content: String
-//}
-
-pub struct CommentViewModelModel {
-    post_status: StateStreamHandle<Option<PostStatus>>,
+#[derive(Default)]
+pub struct DemoViewModel {
+    pub task_poll: TaskPool,
+    pub status: State<Option<Status>>,
+    pub error: State<Option<Error>>,
+    pub text: State<String>,
+    pub jitter: State<f32>,
+    pub duration: State<f32>,
 }
+impl DemoViewModel {
+    pub fn is_simulating(&self) -> bool {
+        matches!(
+            self.status.value(),
+            Some(Status::Preparing | Status::Uploading(..))
+        )
+    }
+    pub fn simulate_upload(&self) {
+        dbg!(self.duration.value(), self.jitter.value());
 
-pub struct CommentViewModelChangeDetector {
-    post_status: StateStreamChangeDetector<Option<PostStatus>>,
-}
+        if self.is_simulating() {
+            return;
+        }
 
-impl ChangeDetector for CommentViewModelChangeDetector {
-    async fn wait_for_change(&mut self) -> Option<()> {
-        self.post_status.wait_for_change().await
+        if *self.duration.value() == 0.0 {
+            self.error.send_value(Some(Error::MissingDuration));
+            return;
+        }
+
+        self.status.send_value(Some(Status::Preparing));
+
+        self.spawn(|this| async move {
+            this.error.send_value(None);
+
+            let duration = *this.duration.value();
+            let timestep = 1.0 / 30.0;
+            let mut progress = 0.0;
+
+            tokio::time::sleep(Duration::from_secs(1)).await;
+
+            this.status.send_value(Some(Status::Uploading(0.0)));
+
+            let start = Instant::now();
+            while progress < duration {
+                let timestamp_millis = (1000.0 * timestep) as u64;
+                tokio::time::sleep(Duration::from_millis(rand::random_range(
+                    timestamp_millis..=timestamp_millis * this.jitter.latest_value() as u64,
+                )))
+                .await;
+
+                progress += timestep;
+                let normalized = progress / duration;
+
+                this.status.send_value(Some(Status::Uploading(normalized)));
+                println!("progress: {}", normalized);
+            }
+
+            println!("took {} seconds", start.elapsed().as_secs());
+            this.status.send_value(Some(Status::Success));
+
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            this.text
+                .send_update(|content| *content = content.to_uppercase());
+        })
     }
 }
 
-impl ViewModel for CommentViewModel {
-    type Model = CommentViewModelModel;
+pub struct DemoViewModelModel {
+    pub status: StateHandle<Option<Status>>,
+    pub error: StateHandle<Option<Error>>,
+    pub text: StateHandle<String>,
+    pub jitter: StateHandle<f32>,
+    pub duration: StateHandle<f32>,
+}
+
+impl ViewModelErased for DemoViewModel {
     fn task_pool(&self) -> &TaskPool {
         &self.task_poll
     }
 
     fn latch_state(&mut self) {
-        self.post_status.latch_value();
-    }
-    fn has_changed(&self) -> bool {
-        self.post_status.has_changed()
+        self.status.latch_value();
+        self.error.latch_value();
+        self.text.latch_value();
+        self.jitter.latch_value();
+        self.duration.latch_value();
     }
 
+    fn change_detector_boxed(&self) -> Box<dyn ChangeDetector> {
+        Box::new(self.change_detector())
+    }
+}
+impl ViewModel for DemoViewModel {
+    type Model = DemoViewModelModel;
+    type ChangeDetector = DemoViewModelChangeDetector;
+
     fn make_model(&self) -> Self::Model {
-        CommentViewModelModel {
-            post_status: self.post_status.handle(),
+        DemoViewModelModel {
+            status: self.status.handle(),
+            error: self.error.handle(),
+            text: self.text.handle(),
+            jitter: self.jitter.handle(),
+            duration: self.duration.handle(),
         }
     }
 
     fn change_detector(&self) -> Self::ChangeDetector {
-        CommentViewModelChangeDetector {
-            post_status: self.post_status.change_detector(),
+        DemoViewModelChangeDetector {
+            status: self.status.change_detector(),
+            error: self.error.change_detector(),
+            text: self.text.change_detector(),
+            jitter: self.jitter.change_detector(),
+            duration: self.duration.change_detector(),
         }
     }
-
-    type ChangeDetector = CommentViewModelChangeDetector;
 }
 
-impl CommentViewModel {
-    pub fn new() -> Self {
-        Self {
-            task_poll: TaskPool::new(),
-            post_status: StateStream::new(None),
-            post_content: String::new(),
-        }
-    }
+#[derive(Clone)]
+pub struct DemoViewModelChangeDetector {
+    status: StateChangeDetector<Option<Status>>,
+    error: StateChangeDetector<Option<Error>>,
+    text: StateChangeDetector<String>,
+    jitter: StateChangeDetector<f32>,
+    duration: StateChangeDetector<f32>,
+}
 
-    pub fn send_comment(&self) {
-        let mut progress = 0.0;
-        self.post_status
-            .set_value(Some(PostStatus::Uploading(progress)));
-        self.spawn(|this| async move {
-            while progress < 1.0 {
-                progress += 0.01;
-                println!("progress: {}", progress);
-
-                tokio::time::sleep(Duration::from_millis(1)).await;
-                this.post_status
-                    .set_value(Some(PostStatus::Uploading(progress)));
+impl ChangeDetector for DemoViewModelChangeDetector {
+    fn wait_for_change(&self) -> Pin<Box<dyn Future<Output = Option<()>> + Send + 'static>> {
+        let this = self.clone();
+        Box::pin(async move {
+            tokio::select! {
+                res = this.status.wait_for_change() => res,
+                res = this.error.wait_for_change() => res,
+                res = this.text.wait_for_change() => res,
+                res = this.jitter.wait_for_change() => res,
+                res = this.duration.wait_for_change() => res
             }
-
-            println!("success");
-            this.post_status.set_value(Some(PostStatus::Success));
         })
     }
 }

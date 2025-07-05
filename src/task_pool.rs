@@ -1,6 +1,7 @@
 use std::sync::Mutex;
 use tokio::task::JoinSet;
 
+#[derive(Default, Debug)]
 pub struct TaskPool {
     join_set: Mutex<JoinSet<()>>,
 }
