@@ -4,13 +4,14 @@ use std::pin::Pin;
 use tokio::sync::watch;
 
 /// Use this for state when [`S`] is a trivially copied type and Arc-Mutexing state isn't necessary.
+#[derive(Clone)]
 pub struct ValState<S> {
     latched: S,
     tx: watch::Sender<S>,
     rx: watch::Receiver<S>,
 }
 
-impl<S: Default + Clone + Send + Sync + 'static> Default for ValState<S> {
+impl<S: Default + Send + Sync + Clone + 'static> Default for ValState<S> {
     fn default() -> Self {
         Self::new(S::default())
     }

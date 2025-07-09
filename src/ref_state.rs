@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use tokio::sync::watch;
 
 /// Use this for state where you typically need &mut access and clones are expensive.
+#[derive(Clone)]
 pub struct RefState<S> {
     latched: Arc<Mutex<S>>,
     tx: watch::Sender<Arc<Mutex<S>>>,
