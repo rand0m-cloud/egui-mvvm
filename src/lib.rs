@@ -8,3 +8,8 @@ pub mod view_model;
 pub trait ChangeDetector: Sync + Send + 'static {
     fn wait_for_change(&self) -> Pin<Box<dyn Future<Output = Option<()>> + Send + 'static>>;
 }
+
+pub trait Stateful {
+    type ChangeDetector: ChangeDetector;
+    type Handle;
+}

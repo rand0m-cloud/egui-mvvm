@@ -1,14 +1,15 @@
 use eframe::{CreationContext, Frame, NativeOptions};
 use egui::{Context, Response, Slider};
-use egui_mvvm::ref_state::{RefState, RefStateChangeDetector, RefStateHandle};
+use egui_mvvm::ref_state::RefState;
 use egui_mvvm::task_pool::TaskPool;
-use egui_mvvm::val_state::{ValState, ValStateChangeDetector, ValStateHandle};
+use egui_mvvm::val_state::ValState;
 use egui_mvvm::view_model::{
     request_repaint_on_change, EguiViewModelExt, EguiViewModelsExt, ViewModel, ViewModelErased,
-    ViewModelMutRef,
+    ViewModelHandle, ViewModelMutRef,
 };
-use egui_mvvm::ChangeDetector;
+use egui_mvvm::{ChangeDetector, Stateful};
 use std::pin::Pin;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 #[tokio::main]
@@ -49,8 +50,8 @@ impl eframe::App for EguiApp {
     }
 }
 
-struct DemoView<'a> {
-    view_model: ViewModelMutRef<'a, DemoViewModel>,
+pub struct DemoView<'a> {
+    pub view_model: ViewModelMutRef<'a, DemoViewModel>,
 }
 
 impl DemoView<'_> {
@@ -83,7 +84,7 @@ impl DemoView<'_> {
                 if ui
                     .add(Slider::new(
                         &mut *self.view_model.jitter.value_mut_untracked(),
-                        1.0..=10.0,
+                        1.0..=20.0,
                     ))
                     .changed()
                 {
@@ -140,13 +141,14 @@ pub enum Error {
 
 #[derive(Default)]
 pub struct DemoViewModel {
-    pub task_poll: TaskPool,
+    pub task_poll: Arc<TaskPool>,
     pub status: ValState<Option<Status>>,
     pub error: ValState<Option<Error>>,
     pub text: RefState<String>,
     pub jitter: ValState<f32>,
     pub duration: ValState<f32>,
 }
+
 impl DemoViewModel {
     pub fn is_simulating(&self) -> bool {
         matches!(
@@ -154,6 +156,7 @@ impl DemoViewModel {
             Some(Status::Preparing | Status::Uploading(..))
         )
     }
+
     pub fn simulate_upload(&self) {
         dbg!(self.duration.value(), self.jitter.value());
 
@@ -172,7 +175,7 @@ impl DemoViewModel {
             this.error.send_value(None);
 
             let duration = *this.duration.value();
-            let timestep = 1.0 / 30.0;
+            let timestep = 1.0 / 90.0;
             let mut progress = 0.0;
 
             tokio::time::sleep(Duration::from_secs(1)).await;
@@ -204,12 +207,13 @@ impl DemoViewModel {
     }
 }
 
+#[derive(Clone)]
 pub struct DemoViewModelModel {
-    pub status: ValStateHandle<Option<Status>>,
-    pub error: ValStateHandle<Option<Error>>,
-    pub text: RefStateHandle<String>,
-    pub jitter: ValStateHandle<f32>,
-    pub duration: ValStateHandle<f32>,
+    pub status: <ValState<Option<Status>> as Stateful>::Handle,
+    pub error: <ValState<Option<Error>> as Stateful>::Handle,
+    pub text: <RefState<String> as Stateful>::Handle,
+    pub jitter: <ValState<f32> as Stateful>::Handle,
+    pub duration: <ValState<f32> as Stateful>::Handle,
 }
 
 impl ViewModelErased for DemoViewModel {
@@ -231,7 +235,7 @@ impl ViewModelErased for DemoViewModel {
 }
 impl ViewModel for DemoViewModel {
     type Model = DemoViewModelModel;
-    type ChangeDetector = DemoViewModelChangeDetector;
+    type Handle = DemoViewModel;
 
     fn make_model(&self) -> Self::Model {
         DemoViewModelModel {
@@ -256,11 +260,11 @@ impl ViewModel for DemoViewModel {
 
 #[derive(Clone)]
 pub struct DemoViewModelChangeDetector {
-    status: ValStateChangeDetector<Option<Status>>,
-    error: ValStateChangeDetector<Option<Error>>,
-    text: RefStateChangeDetector<String>,
-    jitter: ValStateChangeDetector<f32>,
-    duration: ValStateChangeDetector<f32>,
+    status: <ValState<Option<Status>> as Stateful>::ChangeDetector,
+    error: <ValState<Option<Error>> as Stateful>::ChangeDetector,
+    text: <RefState<String> as Stateful>::ChangeDetector,
+    jitter: <ValState<f32> as Stateful>::ChangeDetector,
+    duration: <ValState<f32> as Stateful>::ChangeDetector,
 }
 
 impl ChangeDetector for DemoViewModelChangeDetector {
@@ -276,4 +280,9 @@ impl ChangeDetector for DemoViewModelChangeDetector {
             }
         })
     }
+}
+
+impl Stateful for DemoViewModel {
+    type ChangeDetector = DemoViewModelChangeDetector;
+    type Handle = ViewModelHandle<DemoViewModel>;
 }

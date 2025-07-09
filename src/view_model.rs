@@ -1,5 +1,5 @@
 use crate::task_pool::TaskPool;
-use crate::ChangeDetector;
+use crate::{ChangeDetector, Stateful};
 use egui::Id;
 use std::any::Any;
 use std::ops::{Deref, DerefMut};
@@ -7,9 +7,9 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard, Weak};
 use tokio::sync::watch;
 
-pub trait ViewModel: ViewModelErased {
+pub trait ViewModel: ViewModelErased + Stateful {
     type Model: 'static;
-    type ChangeDetector: ChangeDetector;
+    type Handle;
 
     fn make_model(&self) -> Self::Model;
     fn change_detector(&self) -> Self::ChangeDetector;

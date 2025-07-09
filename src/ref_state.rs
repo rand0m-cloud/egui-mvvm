@@ -1,4 +1,4 @@
-use crate::ChangeDetector;
+use crate::{ChangeDetector, Stateful};
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -137,6 +137,7 @@ impl<S: 'static + Send + Sync> ChangeDetector for RefStateChangeDetector<S> {
     }
 }
 
+#[derive(Clone)]
 pub struct RefStateHandle<S> {
     latched: Arc<Mutex<S>>,
     tx: watch::Sender<Arc<Mutex<S>>>,
@@ -204,4 +205,9 @@ impl<'a, T> DerefMut for RefStateHandleMutRef<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
+}
+
+impl<S: Send + Sync + 'static> Stateful for RefState<S> {
+    type ChangeDetector = RefStateChangeDetector<S>;
+    type Handle = RefStateHandle<S>;
 }

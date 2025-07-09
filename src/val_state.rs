@@ -1,4 +1,4 @@
-use crate::ChangeDetector;
+use crate::{ChangeDetector, Stateful};
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use tokio::sync::watch;
@@ -120,6 +120,7 @@ impl<S: 'static + Send + Sync> ChangeDetector for ValStateChangeDetector<S> {
     }
 }
 
+#[derive(Clone)]
 pub struct ValStateHandle<S> {
     latched: S,
     tx: watch::Sender<S>,
@@ -156,4 +157,9 @@ impl<S> ValStateHandle<S> {
     pub fn maybe_send_update(&self, f: impl FnOnce(&mut S) -> bool) {
         self.tx.send_if_modified(f);
     }
+}
+
+impl<S: Send + Sync + 'static> Stateful for ValState<S> {
+    type ChangeDetector = ValStateChangeDetector<S>;
+    type Handle = ValStateHandle<S>;
 }
