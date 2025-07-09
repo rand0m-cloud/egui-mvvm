@@ -1,5 +1,5 @@
-use crate::ChangeDetector;
 use crate::task_pool::TaskPool;
+use crate::ChangeDetector;
 use egui::Id;
 use std::any::Any;
 use std::ops::{Deref, DerefMut};
@@ -157,28 +157,28 @@ impl EguiViewModelsExt for &mut egui::Memory {
 #[derive(Default)]
 pub struct ViewModelHandle<V>(Arc<RwLock<V>>);
 
-pub struct ViewModelRead<'a, V>(RwLockReadGuard<'a, V>, ViewModelHandle<V>);
-pub struct ViewModelWrite<'a, V>(RwLockWriteGuard<'a, V>, ViewModelHandle<V>);
+pub struct ViewModelRef<'a, V>(RwLockReadGuard<'a, V>, ViewModelHandle<V>);
+pub struct ViewModelMutRef<'a, V>(RwLockWriteGuard<'a, V>, ViewModelHandle<V>);
 
-impl<V> ViewModelRead<'_, V> {
+impl<V> ViewModelRef<'_, V> {
     pub fn handle(&self) -> &ViewModelHandle<V> {
         &self.1
     }
 }
 
-impl<V> ViewModelWrite<'_, V> {
+impl<V> ViewModelMutRef<'_, V> {
     pub fn handle(&self) -> &ViewModelHandle<V> {
         &self.1
     }
 }
 
 impl<V> ViewModelHandle<V> {
-    pub fn get(&self) -> ViewModelRead<V> {
-        ViewModelRead(self.0.read().unwrap(), self.clone())
+    pub fn get(&self) -> ViewModelRef<V> {
+        ViewModelRef(self.0.read().unwrap(), self.clone())
     }
 
-    pub fn get_mut(&self) -> ViewModelWrite<V> {
-        ViewModelWrite(self.0.write().unwrap(), self.clone())
+    pub fn get_mut(&self) -> ViewModelMutRef<V> {
+        ViewModelMutRef(self.0.write().unwrap(), self.clone())
     }
 }
 
@@ -188,7 +188,7 @@ impl<V> Clone for ViewModelHandle<V> {
     }
 }
 
-impl<V> Deref for ViewModelRead<'_, V> {
+impl<V> Deref for ViewModelRef<'_, V> {
     type Target = V;
 
     fn deref(&self) -> &Self::Target {
@@ -196,14 +196,14 @@ impl<V> Deref for ViewModelRead<'_, V> {
     }
 }
 
-impl<V> Deref for ViewModelWrite<'_, V> {
+impl<V> Deref for ViewModelMutRef<'_, V> {
     type Target = V;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
-impl<V> DerefMut for ViewModelWrite<'_, V> {
+impl<V> DerefMut for ViewModelMutRef<'_, V> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }

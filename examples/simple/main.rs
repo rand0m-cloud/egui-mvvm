@@ -1,12 +1,13 @@
 use eframe::{CreationContext, Frame, NativeOptions};
 use egui::{Context, Response, Slider};
-use egui_mvvm::ChangeDetector;
+use egui_mvvm::cheap_state::{CheapState, CheapStateChangeDetector, CheapStateHandle};
 use egui_mvvm::state::{State, StateChangeDetector, StateHandle};
 use egui_mvvm::task_pool::TaskPool;
 use egui_mvvm::view_model::{
-    EguiViewModelExt, EguiViewModelsExt, ViewModel, ViewModelErased, ViewModelWrite,
-    request_repaint_on_change,
+    request_repaint_on_change, EguiViewModelExt, EguiViewModelsExt, ViewModel, ViewModelErased,
+    ViewModelMutRef,
 };
+use egui_mvvm::ChangeDetector;
 use std::pin::Pin;
 use std::time::{Duration, Instant};
 
@@ -49,7 +50,7 @@ impl eframe::App for EguiApp {
 }
 
 struct DemoView<'a> {
-    view_model: ViewModelWrite<'a, DemoViewModel>,
+    view_model: ViewModelMutRef<'a, DemoViewModel>,
 }
 
 impl DemoView<'_> {
@@ -140,11 +141,11 @@ pub enum Error {
 #[derive(Default)]
 pub struct DemoViewModel {
     pub task_poll: TaskPool,
-    pub status: State<Option<Status>>,
-    pub error: State<Option<Error>>,
+    pub status: CheapState<Option<Status>>,
+    pub error: CheapState<Option<Error>>,
     pub text: State<String>,
-    pub jitter: State<f32>,
-    pub duration: State<f32>,
+    pub jitter: CheapState<f32>,
+    pub duration: CheapState<f32>,
 }
 impl DemoViewModel {
     pub fn is_simulating(&self) -> bool {
@@ -204,11 +205,11 @@ impl DemoViewModel {
 }
 
 pub struct DemoViewModelModel {
-    pub status: StateHandle<Option<Status>>,
-    pub error: StateHandle<Option<Error>>,
+    pub status: CheapStateHandle<Option<Status>>,
+    pub error: CheapStateHandle<Option<Error>>,
     pub text: StateHandle<String>,
-    pub jitter: StateHandle<f32>,
-    pub duration: StateHandle<f32>,
+    pub jitter: CheapStateHandle<f32>,
+    pub duration: CheapStateHandle<f32>,
 }
 
 impl ViewModelErased for DemoViewModel {
@@ -255,11 +256,11 @@ impl ViewModel for DemoViewModel {
 
 #[derive(Clone)]
 pub struct DemoViewModelChangeDetector {
-    status: StateChangeDetector<Option<Status>>,
-    error: StateChangeDetector<Option<Error>>,
+    status: CheapStateChangeDetector<Option<Status>>,
+    error: CheapStateChangeDetector<Option<Error>>,
     text: StateChangeDetector<String>,
-    jitter: StateChangeDetector<f32>,
-    duration: StateChangeDetector<f32>,
+    jitter: CheapStateChangeDetector<f32>,
+    duration: CheapStateChangeDetector<f32>,
 }
 
 impl ChangeDetector for DemoViewModelChangeDetector {
