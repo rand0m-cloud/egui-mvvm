@@ -5,26 +5,26 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use tokio::sync::watch;
 
 /// Use this for state where you typically need &mut access and clones are expensive.
-pub struct State<S> {
+pub struct RefState<S> {
     latched: Arc<Mutex<S>>,
     tx: watch::Sender<Arc<Mutex<S>>>,
     rx: watch::Receiver<Arc<Mutex<S>>>,
 }
 
-impl<S: Default + Send + Sync + 'static> Default for State<S> {
+impl<S: Default + Send + Sync + 'static> Default for RefState<S> {
     fn default() -> Self {
         Self::new(S::default())
     }
 }
 
-pub struct StateMutRef<'a, S> {
+pub struct RefStateMutRef<'a, S> {
     state: MutexGuard<'a, S>,
     value: Arc<Mutex<S>>,
     changed: Option<bool>,
     tx: watch::Sender<Arc<Mutex<S>>>,
 }
 
-impl<S> Drop for StateMutRef<'_, S> {
+impl<S> Drop for RefStateMutRef<'_, S> {
     fn drop(&mut self) {
         if self.changed == Some(true) {
             let _ = self.tx.send(self.value.clone());
@@ -32,14 +32,14 @@ impl<S> Drop for StateMutRef<'_, S> {
     }
 }
 
-impl<S> Deref for StateMutRef<'_, S> {
+impl<S> Deref for RefStateMutRef<'_, S> {
     type Target = S;
     fn deref(&self) -> &Self::Target {
         &self.state
     }
 }
 
-impl<S> DerefMut for StateMutRef<'_, S> {
+impl<S> DerefMut for RefStateMutRef<'_, S> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         if self.changed.is_some() {
             self.changed.replace(true);
@@ -49,7 +49,7 @@ impl<S> DerefMut for StateMutRef<'_, S> {
     }
 }
 
-impl<S: 'static + Send + Sync> State<S> {
+impl<S: 'static + Send + Sync> RefState<S> {
     pub fn new(value: S) -> Self {
         let value = Arc::new(Mutex::new(value));
         let (tx, rx) = watch::channel(value.clone());
@@ -70,12 +70,12 @@ impl<S: 'static + Send + Sync> State<S> {
         self.tx.borrow().clone()
     }
 
-    pub fn value(&self) -> StateRef<'_, S> {
-        StateRef(self.latched.lock().unwrap())
+    pub fn value(&self) -> RefStateRef<'_, S> {
+        RefStateRef(self.latched.lock().unwrap())
     }
 
-    pub fn value_mut(&mut self) -> StateMutRef<'_, S> {
-        StateMutRef {
+    pub fn value_mut(&mut self) -> RefStateMutRef<'_, S> {
+        RefStateMutRef {
             value: self.latched.clone(),
             state: self.latched.lock().unwrap(),
             changed: Some(false),
@@ -83,8 +83,8 @@ impl<S: 'static + Send + Sync> State<S> {
         }
     }
 
-    pub fn value_mut_untracked(&mut self) -> StateMutRef<'_, S> {
-        StateMutRef {
+    pub fn value_mut_untracked(&mut self) -> RefStateMutRef<'_, S> {
+        RefStateMutRef {
             value: self.latched.clone(),
             state: self.latched.lock().unwrap(),
             changed: None,
@@ -104,54 +104,54 @@ impl<S: 'static + Send + Sync> State<S> {
         self.tx.send_replace(self.latched.clone());
     }
 
-    pub fn change_detector(&self) -> StateChangeDetector<S> {
-        StateChangeDetector {
+    pub fn change_detector(&self) -> RefStateChangeDetector<S> {
+        RefStateChangeDetector {
             rx: self.tx.subscribe(),
         }
     }
 
-    pub fn handle(&self) -> StateHandle<S> {
-        StateHandle {
+    pub fn handle(&self) -> RefStateHandle<S> {
+        RefStateHandle {
             latched: self.latched.clone(),
             tx: self.tx.clone(),
         }
     }
 }
 
-pub struct StateChangeDetector<S> {
+pub struct RefStateChangeDetector<S> {
     rx: watch::Receiver<Arc<Mutex<S>>>,
 }
 
-impl<S> Clone for StateChangeDetector<S> {
+impl<S> Clone for RefStateChangeDetector<S> {
     fn clone(&self) -> Self {
         Self {
             rx: self.rx.clone(),
         }
     }
 }
-impl<S: 'static + Send + Sync> ChangeDetector for StateChangeDetector<S> {
+impl<S: 'static + Send + Sync> ChangeDetector for RefStateChangeDetector<S> {
     fn wait_for_change(&self) -> Pin<Box<dyn Future<Output = Option<()>> + Send + 'static>> {
         let mut this = self.clone();
         Box::pin(async move { this.rx.changed().await.ok() })
     }
 }
 
-pub struct StateHandle<S> {
+pub struct RefStateHandle<S> {
     latched: Arc<Mutex<S>>,
     tx: watch::Sender<Arc<Mutex<S>>>,
 }
 
-impl<S> StateHandle<S> {
+impl<S> RefStateHandle<S> {
     pub fn set(&mut self, value: S) {
         self.tx.send_replace(Arc::new(Mutex::new(value)));
     }
 
-    pub fn value(&self) -> StateHandleRef<'_, S> {
-        StateHandleRef(self.latched.lock().unwrap())
+    pub fn value(&self) -> RefStateHandleRef<'_, S> {
+        RefStateHandleRef(self.latched.lock().unwrap())
     }
 
-    pub fn value_mut(&mut self) -> StateHandleMutRef<'_, S> {
-        StateHandleMutRef(self.latched.lock().unwrap())
+    pub fn value_mut(&mut self) -> RefStateHandleMutRef<'_, S> {
+        RefStateHandleMutRef(self.latched.lock().unwrap())
     }
 
     pub fn latest_value(&self) -> Arc<Mutex<S>> {
@@ -171,9 +171,9 @@ impl<S> StateHandle<S> {
     }
 }
 
-pub struct StateRef<'a, T>(MutexGuard<'a, T>);
+pub struct RefStateRef<'a, T>(MutexGuard<'a, T>);
 
-impl<'a, T> Deref for StateRef<'a, T> {
+impl<'a, T> Deref for RefStateRef<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -181,25 +181,25 @@ impl<'a, T> Deref for StateRef<'a, T> {
     }
 }
 
-pub struct StateHandleRef<'a, T>(MutexGuard<'a, T>);
+pub struct RefStateHandleRef<'a, T>(MutexGuard<'a, T>);
 
-impl<'a, T> Deref for StateHandleRef<'a, T> {
+impl<'a, T> Deref for RefStateHandleRef<'a, T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-pub struct StateHandleMutRef<'a, T>(MutexGuard<'a, T>);
+pub struct RefStateHandleMutRef<'a, T>(MutexGuard<'a, T>);
 
-impl<'a, T> Deref for StateHandleMutRef<'a, T> {
+impl<'a, T> Deref for RefStateHandleMutRef<'a, T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl<'a, T> DerefMut for StateHandleMutRef<'a, T> {
+impl<'a, T> DerefMut for RefStateHandleMutRef<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }

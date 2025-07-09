@@ -1,8 +1,8 @@
 use std::pin::Pin;
 
-pub mod cheap_state;
-pub mod state;
+pub mod ref_state;
 pub mod task_pool;
+pub mod val_state;
 pub mod view_model;
 
 pub trait ChangeDetector: Sync + Send + 'static {

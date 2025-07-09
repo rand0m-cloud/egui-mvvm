@@ -1,8 +1,8 @@
 use eframe::{CreationContext, Frame, NativeOptions};
 use egui::{Context, Response, Slider};
-use egui_mvvm::cheap_state::{CheapState, CheapStateChangeDetector, CheapStateHandle};
-use egui_mvvm::state::{State, StateChangeDetector, StateHandle};
+use egui_mvvm::ref_state::{RefState, RefStateChangeDetector, RefStateHandle};
 use egui_mvvm::task_pool::TaskPool;
+use egui_mvvm::val_state::{ValState, ValStateChangeDetector, ValStateHandle};
 use egui_mvvm::view_model::{
     request_repaint_on_change, EguiViewModelExt, EguiViewModelsExt, ViewModel, ViewModelErased,
     ViewModelMutRef,
@@ -141,11 +141,11 @@ pub enum Error {
 #[derive(Default)]
 pub struct DemoViewModel {
     pub task_poll: TaskPool,
-    pub status: CheapState<Option<Status>>,
-    pub error: CheapState<Option<Error>>,
-    pub text: State<String>,
-    pub jitter: CheapState<f32>,
-    pub duration: CheapState<f32>,
+    pub status: ValState<Option<Status>>,
+    pub error: ValState<Option<Error>>,
+    pub text: RefState<String>,
+    pub jitter: ValState<f32>,
+    pub duration: ValState<f32>,
 }
 impl DemoViewModel {
     pub fn is_simulating(&self) -> bool {
@@ -205,11 +205,11 @@ impl DemoViewModel {
 }
 
 pub struct DemoViewModelModel {
-    pub status: CheapStateHandle<Option<Status>>,
-    pub error: CheapStateHandle<Option<Error>>,
-    pub text: StateHandle<String>,
-    pub jitter: CheapStateHandle<f32>,
-    pub duration: CheapStateHandle<f32>,
+    pub status: ValStateHandle<Option<Status>>,
+    pub error: ValStateHandle<Option<Error>>,
+    pub text: RefStateHandle<String>,
+    pub jitter: ValStateHandle<f32>,
+    pub duration: ValStateHandle<f32>,
 }
 
 impl ViewModelErased for DemoViewModel {
@@ -256,11 +256,11 @@ impl ViewModel for DemoViewModel {
 
 #[derive(Clone)]
 pub struct DemoViewModelChangeDetector {
-    status: CheapStateChangeDetector<Option<Status>>,
-    error: CheapStateChangeDetector<Option<Error>>,
-    text: StateChangeDetector<String>,
-    jitter: CheapStateChangeDetector<f32>,
-    duration: CheapStateChangeDetector<f32>,
+    status: ValStateChangeDetector<Option<Status>>,
+    error: ValStateChangeDetector<Option<Error>>,
+    text: RefStateChangeDetector<String>,
+    jitter: ValStateChangeDetector<f32>,
+    duration: ValStateChangeDetector<f32>,
 }
 
 impl ChangeDetector for DemoViewModelChangeDetector {

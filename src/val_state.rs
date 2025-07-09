@@ -4,43 +4,43 @@ use std::pin::Pin;
 use tokio::sync::watch;
 
 /// Use this for state when [`S`] is a trivially copied type and Arc-Mutexing state isn't necessary.
-pub struct CheapState<S> {
+pub struct ValState<S> {
     latched: S,
     tx: watch::Sender<S>,
     rx: watch::Receiver<S>,
 }
 
-impl<S: Default + Clone + Send + Sync + 'static> Default for CheapState<S> {
+impl<S: Default + Clone + Send + Sync + 'static> Default for ValState<S> {
     fn default() -> Self {
         Self::new(S::default())
     }
 }
 
-pub struct CheapStateMutRef<'a, S: Clone> {
+pub struct ValStateMutRef<'a, S: Clone> {
     state: &'a mut S,
     tx: watch::Sender<S>,
 }
 
-impl<S: Clone> Drop for CheapStateMutRef<'_, S> {
+impl<S: Clone> Drop for ValStateMutRef<'_, S> {
     fn drop(&mut self) {
         let _ = self.tx.send(self.state.clone());
     }
 }
 
-impl<S: Clone> Deref for CheapStateMutRef<'_, S> {
+impl<S: Clone> Deref for ValStateMutRef<'_, S> {
     type Target = S;
     fn deref(&self) -> &Self::Target {
         self.state
     }
 }
 
-impl<S: Clone> DerefMut for CheapStateMutRef<'_, S> {
+impl<S: Clone> DerefMut for ValStateMutRef<'_, S> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.state
     }
 }
 
-impl<S: 'static + Send + Sync + Clone> CheapState<S> {
+impl<S: 'static + Send + Sync + Clone> ValState<S> {
     pub fn new(value: S) -> Self {
         let (tx, rx) = watch::channel(value.clone());
         Self {
@@ -64,8 +64,8 @@ impl<S: 'static + Send + Sync + Clone> CheapState<S> {
         &self.latched
     }
 
-    pub fn value_mut(&mut self) -> CheapStateMutRef<'_, S> {
-        CheapStateMutRef {
+    pub fn value_mut(&mut self) -> ValStateMutRef<'_, S> {
+        ValStateMutRef {
             state: &mut self.latched,
             tx: self.tx.clone(),
         }
@@ -87,44 +87,44 @@ impl<S: 'static + Send + Sync + Clone> CheapState<S> {
         self.tx.send_replace(self.latched.clone());
     }
 
-    pub fn change_detector(&self) -> CheapStateChangeDetector<S> {
-        CheapStateChangeDetector {
+    pub fn change_detector(&self) -> ValStateChangeDetector<S> {
+        ValStateChangeDetector {
             rx: self.tx.subscribe(),
         }
     }
 
-    pub fn handle(&self) -> CheapStateHandle<S> {
-        CheapStateHandle {
+    pub fn handle(&self) -> ValStateHandle<S> {
+        ValStateHandle {
             latched: self.latched.clone(),
             tx: self.tx.clone(),
         }
     }
 }
 
-pub struct CheapStateChangeDetector<S> {
+pub struct ValStateChangeDetector<S> {
     rx: watch::Receiver<S>,
 }
 
-impl<S> Clone for CheapStateChangeDetector<S> {
+impl<S> Clone for ValStateChangeDetector<S> {
     fn clone(&self) -> Self {
         Self {
             rx: self.rx.clone(),
         }
     }
 }
-impl<S: 'static + Send + Sync> ChangeDetector for CheapStateChangeDetector<S> {
+impl<S: 'static + Send + Sync> ChangeDetector for ValStateChangeDetector<S> {
     fn wait_for_change(&self) -> Pin<Box<dyn Future<Output = Option<()>> + Send + 'static>> {
         let mut this = self.clone();
         Box::pin(async move { this.rx.changed().await.ok() })
     }
 }
 
-pub struct CheapStateHandle<S> {
+pub struct ValStateHandle<S> {
     latched: S,
     tx: watch::Sender<S>,
 }
 
-impl<S> CheapStateHandle<S> {
+impl<S> ValStateHandle<S> {
     pub fn set(&mut self, value: S) {
         self.tx.send_replace(value);
     }
