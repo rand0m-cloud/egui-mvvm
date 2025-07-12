@@ -1,5 +1,6 @@
 use std::pin::Pin;
 
+pub mod hooks;
 pub mod ref_state;
 pub mod task_pool;
 pub mod val_state;

@@ -1,3 +1,4 @@
+use crate::view_model::{ViewModel, ViewModelLike};
 use crate::{ChangeDetector, Stateful};
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
@@ -162,4 +163,27 @@ impl<S> ValStateHandle<S> {
 impl<S: Send + Sync + 'static> Stateful for ValState<S> {
     type ChangeDetector = ValStateChangeDetector<S>;
     type Handle = ValStateHandle<S>;
+}
+
+impl<S: Send + Sync + Clone + 'static> ViewModelLike for ValState<S> {
+    fn latch_state(&mut self) {
+        self.latch_value()
+    }
+
+    fn change_detector_boxed(&self) -> Box<dyn ChangeDetector> {
+        Box::new(self.change_detector())
+    }
+}
+
+impl<S: Send + Sync + Clone + 'static> ViewModel for ValState<S> {
+    type Model = ValStateHandle<S>;
+    type ChangeDetector = ValStateChangeDetector<S>;
+
+    fn make_model(&self) -> Self::Model {
+        self.handle()
+    }
+
+    fn change_detector(&self) -> Self::ChangeDetector {
+        self.change_detector()
+    }
 }

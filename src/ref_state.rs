@@ -1,3 +1,4 @@
+use crate::view_model::{ViewModel, ViewModelLike};
 use crate::{ChangeDetector, Stateful};
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
@@ -210,4 +211,27 @@ impl<'a, T> DerefMut for RefStateHandleMutRef<'a, T> {
 impl<S: Send + Sync + 'static> Stateful for RefState<S> {
     type ChangeDetector = RefStateChangeDetector<S>;
     type Handle = RefStateHandle<S>;
+}
+
+impl<S: Send + Sync + 'static> ViewModelLike for RefState<S> {
+    fn latch_state(&mut self) {
+        self.latch_value()
+    }
+
+    fn change_detector_boxed(&self) -> Box<dyn ChangeDetector> {
+        Box::new(self.change_detector())
+    }
+}
+
+impl<S: Send + Sync + 'static> ViewModel for RefState<S> {
+    type Model = RefStateHandle<S>;
+    type ChangeDetector = RefStateChangeDetector<S>;
+
+    fn make_model(&self) -> Self::Model {
+        self.handle()
+    }
+
+    fn change_detector(&self) -> Self::ChangeDetector {
+        self.change_detector()
+    }
 }

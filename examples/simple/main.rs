@@ -4,12 +4,11 @@ use egui_mvvm::ref_state::RefState;
 use egui_mvvm::task_pool::TaskPool;
 use egui_mvvm::val_state::ValState;
 use egui_mvvm::view_model::{
-    request_repaint_on_change, EguiViewModelExt, EguiViewModelsExt, ViewModel, ViewModelErased,
-    ViewModelHandle, ViewModelMutRef,
+    request_repaint_on_change, EguiViewModelExt, EguiViewModelsExt, ViewModel, ViewModelHandle,
+    ViewModelLike, ViewModelMutRef, ViewModelTaskPool,
 };
 use egui_mvvm::{ChangeDetector, Stateful};
 use std::pin::Pin;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 #[tokio::main]
@@ -37,7 +36,7 @@ impl eframe::App for EguiApp {
         ctx.memory_mut(|mem| mem.view_models().latch_values());
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ctx.memory_ui(ui);
+            //ctx.memory_ui(ui);
 
             ui.label(format!("{:?}", std::time::Instant::now()));
 
@@ -92,6 +91,14 @@ impl DemoView<'_> {
                 }
             });
 
+            // let delay = 1000;
+            // let jitter_debounced = ui.use_debounce(
+            //     *self.view_model.jitter.value(),
+            //     Duration::from_millis(delay),
+            // );
+            // ui.label(format!("Debounced ({delay}ms): {:?}", jitter_debounced));
+            // println!("{jitter_debounced}");
+
             ui.horizontal(|ui| {
                 ui.label("Duration: ");
 
@@ -141,7 +148,7 @@ pub enum Error {
 
 #[derive(Default)]
 pub struct DemoViewModel {
-    pub task_poll: Arc<TaskPool>,
+    pub task_poll: TaskPool,
     pub status: ValState<Option<Status>>,
     pub error: ValState<Option<Error>>,
     pub text: RefState<String>,
@@ -203,7 +210,7 @@ impl DemoViewModel {
             tokio::time::sleep(Duration::from_millis(300)).await;
             this.text
                 .send_update(|content| *content = content.to_uppercase());
-        })
+        });
     }
 }
 
@@ -216,11 +223,7 @@ pub struct DemoViewModelModel {
     pub duration: <ValState<f32> as Stateful>::Handle,
 }
 
-impl ViewModelErased for DemoViewModel {
-    fn task_pool(&self) -> &TaskPool {
-        &self.task_poll
-    }
-
+impl ViewModelLike for DemoViewModel {
     fn latch_state(&mut self) {
         self.status.latch_value();
         self.error.latch_value();
@@ -233,9 +236,10 @@ impl ViewModelErased for DemoViewModel {
         Box::new(self.change_detector())
     }
 }
+
 impl ViewModel for DemoViewModel {
     type Model = DemoViewModelModel;
-    type Handle = DemoViewModel;
+    type ChangeDetector = DemoViewModelChangeDetector;
 
     fn make_model(&self) -> Self::Model {
         DemoViewModelModel {
@@ -255,6 +259,12 @@ impl ViewModel for DemoViewModel {
             jitter: self.jitter.change_detector(),
             duration: self.duration.change_detector(),
         }
+    }
+}
+
+impl ViewModelTaskPool for DemoViewModel {
+    fn task_pool(&self) -> TaskPool {
+        self.task_poll.clone()
     }
 }
 

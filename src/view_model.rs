@@ -1,43 +1,48 @@
-use crate::task_pool::TaskPool;
-use crate::{ChangeDetector, Stateful};
-use egui::Id;
+use crate::task_pool::{TaskHandle, TaskPool};
+use crate::ChangeDetector;
+use egui::{Id, UiBuilder};
 use std::any::Any;
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard, Weak};
 use tokio::sync::watch;
 
-pub trait ViewModel: ViewModelErased + Stateful {
+pub trait ViewModel: ViewModelLike {
     type Model: 'static;
-    type Handle;
+    type ChangeDetector: ChangeDetector;
 
     fn make_model(&self) -> Self::Model;
     fn change_detector(&self) -> Self::ChangeDetector;
 
-    fn spawn<F>(&self, f: impl FnOnce(Self::Model) -> F)
+    fn spawn<F>(&self, f: impl FnOnce(Self::Model) -> F) -> TaskHandle
     where
         F: Future<Output = ()> + Send + 'static,
+        Self: ViewModelTaskPool,
     {
-        self.task_pool().spawn(f(self.make_model()));
+        self.task_pool().spawn(f(self.make_model()))
     }
 
-    fn spawn_local<F>(&self, f: impl FnOnce(Self::Model) -> F)
+    fn spawn_local<F>(&self, f: impl FnOnce(Self::Model) -> F) -> TaskHandle
     where
         F: Future<Output = ()> + 'static,
+        Self: ViewModelTaskPool,
     {
         self.task_pool().spawn_local(f(self.make_model()))
     }
 }
 
-pub trait ViewModelErased: Any + Send + Sync + 'static {
-    fn task_pool(&self) -> &TaskPool;
+pub trait ViewModelTaskPool {
+    fn task_pool(&self) -> TaskPool;
+}
+
+pub trait ViewModelLike: Any + Send + Sync + 'static {
     fn latch_state(&mut self);
     fn change_detector_boxed(&self) -> Box<dyn ChangeDetector>;
 }
 
 #[derive(Clone)]
 pub struct ViewModelsChangeDetector {
-    rx: watch::Receiver<Vec<Weak<RwLock<dyn ViewModelErased>>>>,
+    rx: watch::Receiver<Vec<Weak<RwLock<dyn ViewModelLike>>>>,
 }
 
 impl ChangeDetector for ViewModelsChangeDetector {
@@ -45,9 +50,9 @@ impl ChangeDetector for ViewModelsChangeDetector {
         let mut this = self.clone();
         Box::pin(async move {
             // Create a list of the wait_for_change futures for all view models.
-            let list = this
-                .rx
-                .borrow_and_update()
+            let list = this.rx.borrow_and_update().clone();
+
+            let list = list
                 .iter()
                 .filter_map(|weak| weak.upgrade())
                 .map(|vm| vm.read().unwrap().change_detector_boxed().wait_for_change())
@@ -107,8 +112,8 @@ impl ViewModels {
 
 #[derive(Default)]
 pub struct ViewModelsInner {
-    pub view_models: Vec<Weak<RwLock<dyn ViewModelErased>>>,
-    tx: watch::Sender<Vec<Weak<RwLock<dyn ViewModelErased>>>>,
+    pub view_models: Vec<Weak<RwLock<dyn ViewModelLike>>>,
+    tx: watch::Sender<Vec<Weak<RwLock<dyn ViewModelLike>>>>,
 }
 
 pub trait EguiViewModelExt {
@@ -122,23 +127,26 @@ impl EguiViewModelExt for &mut egui::Ui {
     }
 
     fn fetch_model_or_insert<V: ViewModel, F: FnOnce() -> V>(self, f: F) -> ViewModelHandle<V> {
-        self.memory_mut(|mem| {
-            let mut inserted = false;
+        let id = self.allocate_new_ui(UiBuilder::new(), |ui| ui.id()).inner;
+        let mut inserted = false;
+        let vm = self.memory_mut(|mem| {
             let vm = mem
                 .data
-                .get_temp_mut_or_insert_with::<ViewModelHandle<V>>(self.id(), || {
+                .get_temp_mut_or_insert_with::<ViewModelHandle<V>>(id, || {
                     inserted = true;
                     ViewModelHandle(Arc::new(RwLock::new(f())))
                 })
                 .clone();
 
-            if inserted {
-                let vms = mem.view_models();
-                vms.add(&vm);
-            }
-
             vm
-        })
+        });
+
+        if inserted {
+            let vms = self.memory_mut(|mem| mem.view_models());
+            vms.add(&vm);
+        }
+
+        vm
     }
 }
 
