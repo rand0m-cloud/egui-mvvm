@@ -100,7 +100,7 @@ impl DownloadView<'_> {
             });
 
             ui.horizontal(|ui| {
-                ui.label("Jitter: ");
+                ui.label("(Live!) Jitter: ");
 
                 if ui
                     .add(Slider::new(
@@ -114,7 +114,7 @@ impl DownloadView<'_> {
             });
 
             ui.horizontal(|ui| {
-                ui.label("Duration: ");
+                ui.label("(Latched!) Duration: ");
 
                 if ui
                     .add(Slider::new(
