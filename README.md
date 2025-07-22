@@ -129,7 +129,7 @@ Currently implemented hooks:
 
 - `use_val_state` — for simple value state
 - `use_ref_state` — for reference-backed state
-- `use_effect` — to run cleanup-aware side effects
+- `use_effect` — to run side effects
 - `use_debounce` — to debounce rapid state changes or events
 
 These hooks complement the core API but are auxiliary tools rather than the main pattern.
