@@ -12,8 +12,6 @@ view_model! {
     pub struct CommentView {
         #[viewmodel]
         comment: CommentViewModel,
-        #[viewmodel]
-        dummy: DummyViewModel,
    }
 
     #[model(default)]

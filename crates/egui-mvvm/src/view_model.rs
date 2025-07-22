@@ -1,5 +1,5 @@
-use crate::task_pool::{TaskHandle, TaskPool};
 use crate::ChangeDetector;
+use crate::task_pool::{TaskHandle, TaskPool};
 use egui::{Id, UiBuilder};
 use std::any::Any;
 use std::ops::{Deref, DerefMut};

@@ -187,3 +187,9 @@ impl<S: Send + Sync + Clone + 'static> ViewModel for ValState<S> {
         self.change_detector()
     }
 }
+
+impl<T: Send + Sync + Clone + 'static> From<T> for ValState<T> {
+    fn from(value: T) -> Self {
+        ValState::new(value)
+    }
+}

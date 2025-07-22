@@ -6,6 +6,8 @@ pub mod task_pool;
 pub mod val_state;
 pub mod view_model;
 
+pub use egui_mvvm_macro::view_model;
+
 pub trait ChangeDetector: Sync + Send + 'static {
     fn wait_for_change(&self) -> Pin<Box<dyn Future<Output = Option<()>> + Send + 'static>>;
 }

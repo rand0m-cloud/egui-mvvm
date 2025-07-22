@@ -176,7 +176,7 @@ impl<S> RefStateHandle<S> {
 
 pub struct RefStateRef<'a, T>(MutexGuard<'a, T>);
 
-impl<'a, T> Deref for RefStateRef<'a, T> {
+impl<T> Deref for RefStateRef<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -186,7 +186,7 @@ impl<'a, T> Deref for RefStateRef<'a, T> {
 
 pub struct RefStateHandleRef<'a, T>(MutexGuard<'a, T>);
 
-impl<'a, T> Deref for RefStateHandleRef<'a, T> {
+impl<T> Deref for RefStateHandleRef<'_, T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -195,14 +195,14 @@ impl<'a, T> Deref for RefStateHandleRef<'a, T> {
 
 pub struct RefStateHandleMutRef<'a, T>(MutexGuard<'a, T>);
 
-impl<'a, T> Deref for RefStateHandleMutRef<'a, T> {
+impl<T> Deref for RefStateHandleMutRef<'_, T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl<'a, T> DerefMut for RefStateHandleMutRef<'a, T> {
+impl<T> DerefMut for RefStateHandleMutRef<'_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -233,5 +233,11 @@ impl<S: Send + Sync + 'static> ViewModel for RefState<S> {
 
     fn change_detector(&self) -> Self::ChangeDetector {
         self.change_detector()
+    }
+}
+
+impl<T: Send + Sync + 'static> From<T> for RefState<T> {
+    fn from(value: T) -> Self {
+        RefState::new(value)
     }
 }
