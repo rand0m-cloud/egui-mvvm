@@ -4,7 +4,7 @@ use egui_mvvm::ref_state::RefState;
 use egui_mvvm::val_state::ValState;
 use egui_mvvm::view_model;
 use egui_mvvm::view_model::{
-    EguiViewModelExt, EguiViewModelsExt, ViewModel, request_repaint_on_change,
+    request_repaint_on_change, EguiViewModelExt, EguiViewModelsExt, ViewModel,
 };
 use std::time::{Duration, Instant};
 
@@ -37,8 +37,8 @@ impl eframe::App for EguiApp {
 
             ui.label(format!("{:?}", std::time::Instant::now()));
 
-            let view_model = ui.fetch_model::<CommentViewModel>();
-            CommentView {
+            let view_model = ui.fetch_model::<DownloadViewModel>();
+            DownloadView {
                 view_model: view_model.get_mut(),
             }
             .show(ui)
@@ -48,13 +48,13 @@ impl eframe::App for EguiApp {
 
 view_model! {
     #[view]
-    pub struct CommentView {
+    pub struct DownloadView {
         #[viewmodel]
-        pub view_model: &mut CommentViewModel,
+        pub view_model: &mut DownloadViewModel,
     }
 
     #[viewmodel(default)]
-    pub struct CommentViewModel {
+    pub struct DownloadViewModel {
         pub status: ValState<Option<Status>> = None,
         pub error: ValState<Option<Error>> = None,
         pub text: RefState<String> = "".to_string(),
@@ -75,7 +75,7 @@ pub enum Error {
     MissingDuration,
 }
 
-impl CommentView<'_> {
+impl DownloadView<'_> {
     pub fn show(&mut self, ui: &mut egui::Ui) -> Response {
         ui.vertical(|ui| {
             if let Some(error) = self.view_model.error.value() {
@@ -148,7 +148,7 @@ impl CommentView<'_> {
     }
 }
 
-impl CommentViewModel {
+impl DownloadViewModel {
     pub fn is_simulating(&self) -> bool {
         matches!(
             self.status.value(),
@@ -171,8 +171,6 @@ impl CommentViewModel {
         self.status.send_value(Some(Status::Preparing));
 
         self.spawn(|this| async move {
-            this.error.send_value(None);
-
             let duration = *this.duration.value();
             let timestep = 1.0 / 90.0;
             let mut progress = 0.0;

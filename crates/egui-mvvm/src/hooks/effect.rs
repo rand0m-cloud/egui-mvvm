@@ -3,19 +3,19 @@ use crate::val_state::ValState;
 use crate::view_model::EguiViewModelExt;
 use std::pin::Pin;
 
-pub trait UseDisposable<I> {
-    fn use_disposable_effect(
+pub trait UseEffect<I> {
+    fn use_effect(
         self,
         id: I,
         block: impl FnOnce(I) -> Pin<Box<dyn Future<Output = ()> + Send + Sync + 'static>>,
     );
 }
 
-impl<I> UseDisposable<I> for &mut egui::Ui
+impl<I> UseEffect<I> for &mut egui::Ui
 where
     I: PartialEq + Clone + Send + Sync + 'static,
 {
-    fn use_disposable_effect(
+    fn use_effect(
         mut self,
         id: I,
         block: impl FnOnce(I) -> Pin<Box<dyn Future<Output = ()> + Send + Sync + 'static>>,

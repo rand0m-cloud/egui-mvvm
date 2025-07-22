@@ -1,3 +1,3 @@
 pub mod debounce;
-pub mod disposable;
+pub mod effect;
 pub mod state;

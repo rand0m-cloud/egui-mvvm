@@ -1,4 +1,4 @@
-use crate::hooks::disposable::UseDisposable;
+use crate::hooks::effect::UseEffect;
 use crate::hooks::state::UseState;
 use egui::Ui;
 use std::time::Duration;
@@ -10,7 +10,7 @@ where
     let state = ui.use_val_state_or_insert(|| val.clone());
     {
         let handle = (*state.get()).handle();
-        ui.use_disposable_effect((val, delay), |(val, delay)| {
+        ui.use_effect((val, delay), |(val, delay)| {
             Box::pin(async move {
                 tokio::time::sleep(delay).await;
                 handle.send_update(|v| *v = val);
