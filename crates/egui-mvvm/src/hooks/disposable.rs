@@ -27,18 +27,15 @@ where
 
         if state.value().0.as_ref() != Some(&id) {
             if let Some(handle) = &state.value().1 {
-                println!("aborting disposable task");
                 handle.abort();
             }
 
             let handle = {
                 let value = id.clone();
                 let block = block(value);
-                println!("spawning task");
                 self.local_task_pool().spawn(block)
             };
 
-            println!("dispoable new state");
             state.send_modify(|(state_id, state_task_handle)| {
                 *state_id = Some(id);
                 *state_task_handle = Some(handle);

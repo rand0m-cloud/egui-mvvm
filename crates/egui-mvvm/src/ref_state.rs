@@ -241,3 +241,13 @@ impl<T: Send + Sync + 'static> From<T> for RefState<T> {
         RefState::new(value)
     }
 }
+
+impl<T: PartialEq> PartialEq for RefStateHandle<T> {
+    fn eq(&self, other: &Self) -> bool {
+        if Arc::ptr_eq(&self.latched, &other.latched) {
+            true
+        } else {
+            self.value().eq(&other.value())
+        }
+    }
+}
