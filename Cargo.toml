@@ -1,3 +1,10 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
+
+[workspace.dependencies]
+egui = "0.32.0"
+eframe = "0.32.0"
+tokio = "1.46.1"
+futures = "0.3.31"
+rand = "0.9.2"

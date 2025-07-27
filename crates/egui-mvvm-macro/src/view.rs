@@ -1,7 +1,7 @@
 use proc_macro2::TokenStream;
-use quote::{quote, ToTokens};
+use quote::ToTokens;
 use syn::parse::{Parse, ParseStream};
-use syn::{Attribute, ItemStruct, Meta, Type};
+use syn::{parse_quote, Attribute, ItemStruct, Meta, Type};
 
 pub fn is_view_attr(attr: &Attribute) -> Option<()> {
     is_view_meta(&attr.meta)
@@ -40,9 +40,7 @@ impl ToTokens for ViewMacroInput {
         );
 
         // Add a 'viewmodel lifetime to the struct.
-        item.generics
-            .params
-            .push(syn::parse2(quote! { 'viewmodel }).unwrap());
+        item.generics.params.push(parse_quote! { 'viewmodel });
 
         for field in &mut item.fields {
             // We want to modify fields with #[viewmodel].
@@ -61,12 +59,9 @@ impl ToTokens for ViewMacroInput {
                         "todo: support view structs with lifetimes"
                     );
                     if tyref.mutability.is_some() {
-                        field.ty = syn::parse2(quote! { egui_mvvm::view_model::ViewModelMutRef<'viewmodel, #view_model> }).unwrap();
+                        field.ty = parse_quote! { egui_mvvm::view_model::ViewModelMutRef<'viewmodel, #view_model> };
                     } else {
-                        field.ty = syn::parse2(
-                            quote! { egui_mvvm::view_model::ViewModelRef<'viewmodel, #view_model> },
-                        )
-                        .unwrap();
+                        field.ty = parse_quote! { egui_mvvm::view_model::ViewModelRef<'viewmodel, #view_model> };
                     };
                 }
                 _ => {

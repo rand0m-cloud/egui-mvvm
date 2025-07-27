@@ -1,5 +1,6 @@
 use crate::view_model::{ViewModel, ViewModelLike};
 use crate::{ChangeDetector, Stateful};
+use egui::{Response, Ui};
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use tokio::sync::watch;
@@ -100,6 +101,19 @@ impl<S: 'static + Send + Sync + Clone> ValState<S> {
             latched: self.latched.clone(),
             tx: self.tx.clone(),
         }
+    }
+
+    pub fn with_mut_for_ui(
+        &mut self,
+        ui: &mut Ui,
+        f: impl FnOnce(&mut Ui, &mut S) -> Response,
+    ) -> Response {
+        let resp = f(ui, self.value_mut_untracked());
+        if resp.changed() {
+            self.mark_changed()
+        }
+
+        resp
     }
 }
 

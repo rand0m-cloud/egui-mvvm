@@ -1,4 +1,4 @@
-use egui::{Ui, UiBuilder};
+use egui::Ui;
 use std::sync::{Arc, Mutex};
 use tokio::task::{AbortHandle, JoinSet};
 
@@ -48,7 +48,7 @@ pub trait EguiLocalTaskPool {
 
 impl EguiLocalTaskPool for &mut Ui {
     fn local_task_pool(&mut self) -> TaskPool {
-        let id = self.allocate_new_ui(UiBuilder::new(), |ui| ui.id()).inner;
+        let id = self.scope(|ui| ui.id()).inner;
         self.memory_mut(|mem| mem.data.get_temp_mut_or_default::<TaskPool>(id).clone())
     }
 }

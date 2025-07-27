@@ -32,6 +32,14 @@ pub fn is_viewmodel_meta(meta: &Meta) -> Option<ViewModelAttr> {
     }
 }
 
+pub fn is_skip(attr: &Attribute) -> bool {
+    attr.path().get_ident().is_some_and(|i| i == "skip")
+}
+
+pub fn is_skipped_field(f: &ViewModelField) -> bool {
+    f.attrs.iter().any(is_skip)
+}
+
 #[derive(Clone)]
 pub struct ViewModelMacroInput {
     attrs: Vec<Attribute>,
@@ -161,7 +169,7 @@ impl ToTokens for ViewModelMacroInput {
         let mut change_fields = Vec::new();
         let mut model_fields = Vec::new();
 
-        for field in self.fields.named.iter() {
+        for field in self.fields.named.iter().filter(|f| !is_skipped_field(f)) {
             let ViewModelField { vis, ident, ty, .. } = &field;
             let ident = ident.clone();
 
@@ -176,7 +184,7 @@ impl ToTokens for ViewModelMacroInput {
 
         let change_struct_literal = {
             let mut fields = vec![];
-            for field in self.fields.named.iter() {
+            for field in self.fields.named.iter().filter(|f| !is_skipped_field(f)) {
                 let ident = &field.ident;
                 fields.push(quote! { #ident: self.#ident.change_detector() })
             }
@@ -186,7 +194,7 @@ impl ToTokens for ViewModelMacroInput {
 
         let model_struct_literal = {
             let mut fields = vec![];
-            for field in self.fields.named.iter() {
+            for field in self.fields.named.iter().filter(|f| !is_skipped_field(f)) {
                 let ident = &field.ident;
                 fields.push(quote! { #ident: self.#ident.handle() })
             }
@@ -196,7 +204,7 @@ impl ToTokens for ViewModelMacroInput {
 
         let change_detector_impl = {
             let mut select_arms = vec![];
-            for field in self.fields.named.iter() {
+            for field in self.fields.named.iter().filter(|f| !is_skipped_field(f)) {
                 let ident = &field.ident;
                 select_arms.push(quote! { res = this.#ident.wait_for_change() => res })
             }
@@ -213,7 +221,7 @@ impl ToTokens for ViewModelMacroInput {
 
         let latch_state_impl = {
             let mut fields = vec![];
-            for field in self.fields.named.iter() {
+            for field in self.fields.named.iter().filter(|f| !is_skipped_field(f)) {
                 let ident = &field.ident;
                 fields.push(quote! { self.#ident.latch_value(); })
             }
@@ -240,7 +248,7 @@ impl ToTokens for ViewModelMacroInput {
             }
         };
 
-        let item_sub_viewmodel_attr = ItemStruct {
+        let final_item = ItemStruct {
             attrs: item
                 .attrs
                 .clone()
@@ -250,7 +258,7 @@ impl ToTokens for ViewModelMacroInput {
             ..item.clone()
         };
         tokens.extend(quote! {
-           #item_sub_viewmodel_attr
+           #final_item
 
            impl egui_mvvm::view_model::ViewModelLike for #ident {
                fn latch_state(&mut self) {
@@ -258,6 +266,7 @@ impl ToTokens for ViewModelMacroInput {
                }
 
                fn change_detector_boxed(&self) -> Box<dyn egui_mvvm::ChangeDetector> {
+                   use egui_mvvm::view_model::ViewModel;
                    Box::new(self.change_detector())
                }
            }
@@ -285,11 +294,6 @@ impl ToTokens for ViewModelMacroInput {
            }
 
            #default_impl
-
-           impl egui_mvvm::Stateful for #ident {
-               type ChangeDetector = #change;
-               type Handle = egui_mvvm::view_model::ViewModelHandle<#ident>;
-           }
 
            impl egui_mvvm::view_model::ViewModel for #ident {
                 type Model = #model;
@@ -342,7 +346,7 @@ impl ViewModelFields {
 impl ViewModelField {
     pub fn into_field(self) -> Field {
         let Self {
-            attrs,
+            mut attrs,
             vis,
             mutability,
             ident,
@@ -350,6 +354,9 @@ impl ViewModelField {
             ty,
             default_value: _,
         } = self;
+
+        attrs.retain(|attr| !is_skip(attr));
+
         Field {
             attrs,
             vis,

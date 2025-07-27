@@ -1,6 +1,6 @@
-use crate::ChangeDetector;
 use crate::task_pool::{TaskHandle, TaskPool};
-use egui::{Id, UiBuilder};
+use crate::ChangeDetector;
+use egui::{Area, Id};
 use std::any::Any;
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
@@ -116,18 +116,17 @@ pub struct ViewModelsInner {
     tx: watch::Sender<Vec<Weak<RwLock<dyn ViewModelLike>>>>,
 }
 
-pub trait EguiViewModelExt {
-    fn fetch_model<V: ViewModel + Default>(self) -> ViewModelHandle<V>;
+pub trait EguiViewModelExt: Sized {
+    fn fetch_model<V: ViewModel + Default>(self) -> ViewModelHandle<V> {
+        self.fetch_model_or_insert(V::default)
+    }
+
     fn fetch_model_or_insert<V: ViewModel, F: FnOnce() -> V>(self, f: F) -> ViewModelHandle<V>;
 }
 
 impl EguiViewModelExt for &mut egui::Ui {
-    fn fetch_model<V: ViewModel + Default>(self) -> ViewModelHandle<V> {
-        self.fetch_model_or_insert(|| Default::default())
-    }
-
     fn fetch_model_or_insert<V: ViewModel, F: FnOnce() -> V>(self, f: F) -> ViewModelHandle<V> {
-        let id = self.allocate_new_ui(UiBuilder::new(), |ui| ui.id()).inner;
+        let id = self.scope(|ui| ui.id()).inner;
         let mut inserted = false;
         let vm = self.memory_mut(|mem| {
             let vm = mem
@@ -147,6 +146,14 @@ impl EguiViewModelExt for &mut egui::Ui {
         }
 
         vm
+    }
+}
+
+impl EguiViewModelExt for &egui::Context {
+    fn fetch_model_or_insert<V: ViewModel, F: FnOnce() -> V>(self, f: F) -> ViewModelHandle<V> {
+        Area::new(Id::NULL)
+            .show(self, |ui| ui.fetch_model_or_insert(f))
+            .inner
     }
 }
 

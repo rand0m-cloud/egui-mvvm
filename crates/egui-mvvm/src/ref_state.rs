@@ -1,16 +1,17 @@
 use crate::view_model::{ViewModel, ViewModelLike};
 use crate::{ChangeDetector, Stateful};
+use egui::{Response, Ui};
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tokio::sync::watch;
 
 /// Use this for state where you typically need &mut access and clones are expensive.
 #[derive(Clone)]
 pub struct RefState<S> {
-    latched: Arc<Mutex<S>>,
-    tx: watch::Sender<Arc<Mutex<S>>>,
-    rx: watch::Receiver<Arc<Mutex<S>>>,
+    latched: Arc<RwLock<S>>,
+    tx: watch::Sender<Arc<RwLock<S>>>,
+    rx: watch::Receiver<Arc<RwLock<S>>>,
 }
 
 impl<S: Default + Send + Sync + 'static> Default for RefState<S> {
@@ -20,10 +21,10 @@ impl<S: Default + Send + Sync + 'static> Default for RefState<S> {
 }
 
 pub struct RefStateMutRef<'a, S> {
-    state: MutexGuard<'a, S>,
-    value: Arc<Mutex<S>>,
+    state: RwLockWriteGuard<'a, S>,
+    value: Arc<RwLock<S>>,
     changed: Option<bool>,
-    tx: watch::Sender<Arc<Mutex<S>>>,
+    tx: watch::Sender<Arc<RwLock<S>>>,
 }
 
 impl<S> Drop for RefStateMutRef<'_, S> {
@@ -53,7 +54,7 @@ impl<S> DerefMut for RefStateMutRef<'_, S> {
 
 impl<S: 'static + Send + Sync> RefState<S> {
     pub fn new(value: S) -> Self {
-        let value = Arc::new(Mutex::new(value));
+        let value = Arc::new(RwLock::new(value));
         let (tx, rx) = watch::channel(value.clone());
         Self {
             latched: value,
@@ -68,18 +69,18 @@ impl<S: 'static + Send + Sync> RefState<S> {
         }
     }
 
-    pub fn latest_value(&self) -> Arc<Mutex<S>> {
+    pub fn latest_value(&self) -> Arc<RwLock<S>> {
         self.tx.borrow().clone()
     }
 
     pub fn value(&self) -> RefStateRef<'_, S> {
-        RefStateRef(self.latched.lock().unwrap())
+        RefStateRef(self.latched.read().unwrap())
     }
 
     pub fn value_mut(&mut self) -> RefStateMutRef<'_, S> {
         RefStateMutRef {
             value: self.latched.clone(),
-            state: self.latched.lock().unwrap(),
+            state: self.latched.write().unwrap(),
             changed: Some(false),
             tx: self.tx.clone(),
         }
@@ -88,18 +89,18 @@ impl<S: 'static + Send + Sync> RefState<S> {
     pub fn value_mut_untracked(&mut self) -> RefStateMutRef<'_, S> {
         RefStateMutRef {
             value: self.latched.clone(),
-            state: self.latched.lock().unwrap(),
+            state: self.latched.write().unwrap(),
             changed: None,
             tx: self.tx.clone(),
         }
     }
 
     pub fn send_value(&self, value: S) {
-        let _ = self.tx.send(Arc::new(Mutex::new(value)));
+        let _ = self.tx.send(Arc::new(RwLock::new(value)));
     }
 
     pub fn send_modify(&self, f: impl FnOnce(&mut S)) {
-        self.tx.send_modify(|t| f(&mut t.lock().unwrap()));
+        self.tx.send_modify(|t| f(&mut t.write().unwrap()));
     }
 
     pub fn mark_changed(&mut self) {
@@ -118,10 +119,23 @@ impl<S: 'static + Send + Sync> RefState<S> {
             tx: self.tx.clone(),
         }
     }
+
+    pub fn with_mut_for_ui(
+        &mut self,
+        ui: &mut Ui,
+        f: impl FnOnce(&mut Ui, &mut S) -> Response,
+    ) -> Response {
+        let resp = f(ui, &mut self.value_mut_untracked());
+        if resp.changed() {
+            self.mark_changed()
+        }
+
+        resp
+    }
 }
 
 pub struct RefStateChangeDetector<S> {
-    rx: watch::Receiver<Arc<Mutex<S>>>,
+    rx: watch::Receiver<Arc<RwLock<S>>>,
 }
 
 impl<S> Clone for RefStateChangeDetector<S> {
@@ -140,41 +154,41 @@ impl<S: 'static + Send + Sync> ChangeDetector for RefStateChangeDetector<S> {
 
 #[derive(Clone)]
 pub struct RefStateHandle<S> {
-    latched: Arc<Mutex<S>>,
-    tx: watch::Sender<Arc<Mutex<S>>>,
+    latched: Arc<RwLock<S>>,
+    tx: watch::Sender<Arc<RwLock<S>>>,
 }
 
 impl<S> RefStateHandle<S> {
     pub fn set(&mut self, value: S) {
-        self.tx.send_replace(Arc::new(Mutex::new(value)));
+        self.tx.send_replace(Arc::new(RwLock::new(value)));
     }
 
     pub fn value(&self) -> RefStateHandleRef<'_, S> {
-        RefStateHandleRef(self.latched.lock().unwrap())
+        RefStateHandleRef(self.latched.read().unwrap())
     }
 
     pub fn value_mut(&mut self) -> RefStateHandleMutRef<'_, S> {
-        RefStateHandleMutRef(self.latched.lock().unwrap())
+        RefStateHandleMutRef(self.latched.write().unwrap())
     }
 
-    pub fn latest_value(&self) -> Arc<Mutex<S>> {
+    pub fn latest_value(&self) -> Arc<RwLock<S>> {
         self.tx.borrow().clone()
     }
 
     pub fn send_value(&self, value: S) {
-        let _ = self.tx.send(Arc::new(Mutex::new(value)));
+        let _ = self.tx.send(Arc::new(RwLock::new(value)));
     }
 
     pub fn send_update(&self, f: impl FnOnce(&mut S)) {
-        self.tx.send_modify(|t| f(&mut t.lock().unwrap()));
+        self.tx.send_modify(|t| f(&mut t.write().unwrap()));
     }
 
     pub fn maybe_send_update(&self, f: impl FnOnce(&mut S) -> bool) {
-        self.tx.send_if_modified(|t| f(&mut t.lock().unwrap()));
+        self.tx.send_if_modified(|t| f(&mut t.write().unwrap()));
     }
 }
 
-pub struct RefStateRef<'a, T>(MutexGuard<'a, T>);
+pub struct RefStateRef<'a, T>(RwLockReadGuard<'a, T>);
 
 impl<T> Deref for RefStateRef<'_, T> {
     type Target = T;
@@ -184,7 +198,7 @@ impl<T> Deref for RefStateRef<'_, T> {
     }
 }
 
-pub struct RefStateHandleRef<'a, T>(MutexGuard<'a, T>);
+pub struct RefStateHandleRef<'a, T>(RwLockReadGuard<'a, T>);
 
 impl<T> Deref for RefStateHandleRef<'_, T> {
     type Target = T;
@@ -193,7 +207,7 @@ impl<T> Deref for RefStateHandleRef<'_, T> {
     }
 }
 
-pub struct RefStateHandleMutRef<'a, T>(MutexGuard<'a, T>);
+pub struct RefStateHandleMutRef<'a, T>(RwLockWriteGuard<'a, T>);
 
 impl<T> Deref for RefStateHandleMutRef<'_, T> {
     type Target = T;

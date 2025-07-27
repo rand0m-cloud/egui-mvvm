@@ -1,0 +1,11 @@
+[package]
+name = "example-project"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+egui-mvvm.path = "../egui-mvvm"
+egui.workspace = true
+eframe.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "time", "macros"] }
+jiff = "0.2.15"
